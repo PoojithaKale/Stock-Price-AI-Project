@@ -59,7 +59,6 @@
     select#condition { min-width: 270px; }
     input#zip        { width: 110px; }
     select#miles     { width: 145px; }
-    input#apikey     { width: 330px; font-family: monospace; font-size: 0.83rem; }
 
     #run-btn {
       height: 38px;
@@ -78,15 +77,6 @@
     #run-btn:active   { transform: scale(0.97); }
     #run-btn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
 
-    /* ── api-key warning ── */
-    .api-warning {
-      background: #1c140a;
-      border-bottom: 1px solid #5a3a10;
-      padding: 0.45rem 2rem;
-      font-size: 0.77rem;
-      color: #e3b341;
-    }
-
     /* ── main layout ── */
     main {
       display: flex;
@@ -97,7 +87,7 @@
     }
 
     /* ── agent log column ── */
-    #agent-log-col { flex: 0 0 360px; display: flex; flex-direction: column; gap: 0.55rem; }
+    #agent-log-col { flex: 0 0 320px; display: flex; flex-direction: column; gap: 0.55rem; }
     #agent-log-col h2 { font-size: 0.8rem; font-weight: 700; color: #8b949e; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.2rem; }
 
     /* ── results column ── */
@@ -138,19 +128,6 @@
     .card-error  .card-label { color: #f85149; }
 
     .card-body { font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap; }
-
-    .badge {
-      display: inline-block;
-      background: #21262d;
-      border: 1px solid #30363d;
-      border-radius: 5px;
-      padding: 0.12rem 0.5rem;
-      font-size: 0.76rem;
-      font-family: monospace;
-      color: #d2a679;
-      margin-top: 0.35rem;
-      word-break: break-all;
-    }
 
     /* ── results output ── */
     #output {
@@ -199,7 +176,6 @@
       main { flex-direction: column; padding: 1rem; }
       #agent-log-col { flex: none; }
       .control-bar { padding: 1rem; }
-      input#apikey { width: 100%; max-width: 340px; }
     }
   </style>
 </head>
@@ -207,14 +183,10 @@
 
 <header>
   <h1>🏥 Clinical Trial Finder <sup style="font-size:.55em;opacity:.7">v2</sup></h1>
-  <p>Powered by Anthropic <code>claude-opus-4-6</code> · Live data from ClinicalTrials.gov · AI-generated 5-line plain-English summaries</p>
+  <p>Powered by Anthropic <code>claude-opus-4-6</code> · Live data from ClinicalTrials.gov · 5-line plain-English summaries</p>
 </header>
 
 <div class="control-bar">
-  <div class="field">
-    <label for="apikey">Anthropic API Key</label>
-    <input type="password" id="apikey" placeholder="sk-ant-api…" autocomplete="off" />
-  </div>
   <div class="field">
     <label for="condition">Medical Condition</label>
     <select id="condition"><option value="">Loading conditions…</option></select>
@@ -235,10 +207,6 @@
   <button id="run-btn" onclick="findTrials()">🔍&nbsp; Find Trials</button>
 </div>
 
-<div class="api-warning">
-  ⚠️ Your API key is sent directly to Anthropic from your browser and is never stored on any server. Use for personal / local use only.
-</div>
-
 <main>
   <div id="agent-log-col">
     <h2>Agent Activity</h2>
@@ -252,208 +220,32 @@
 
 <footer>
   Clinical Trial Finder v2 &nbsp;·&nbsp; Anthropic <code>claude-opus-4-6</code>
-  &nbsp;·&nbsp; ClinicalTrials.gov API v2 &nbsp;·&nbsp; No backend required
+  &nbsp;·&nbsp; ClinicalTrials.gov API v2 &nbsp;·&nbsp; Served by <code>clinical_trial_v2.py</code>
 </footer>
 
 <script>
-// ── Constants ──────────────────────────────────────────────────────────────────
-const CT_BASE       = 'https://clinicaltrials.gov/api/v2';
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-
-const FALLBACK_CONDITIONS = [
-  "Alzheimer's Disease", "Amyotrophic Lateral Sclerosis", "Anxiety Disorder",
-  "Asthma", "Atrial Fibrillation", "Autism Spectrum Disorder", "Bipolar Disorder",
-  "Breast Cancer", "Cervical Cancer", "Chronic Kidney Disease",
-  "Chronic Obstructive Pulmonary Disease", "Colorectal Cancer", "COVID-19",
-  "Crohn's Disease", "Depression", "Diabetes Mellitus, Type 1",
-  "Diabetes Mellitus, Type 2", "Epilepsy", "Heart Failure", "HIV Infections",
-  "Hypertension", "Hypothyroidism", "Inflammatory Bowel Disease", "Leukemia",
-  "Lung Cancer", "Lupus", "Melanoma", "Multiple Myeloma", "Multiple Sclerosis",
-  "Obesity", "Osteoarthritis", "Osteoporosis", "Ovarian Cancer",
-  "Parkinson Disease", "Prostate Cancer", "Psoriasis", "Rheumatoid Arthritis",
-  "Schizophrenia", "Sickle Cell Disease", "Sleep Apnea", "Stroke",
-  "Ulcerative Colitis",
-];
-
-// Same tool definition as clinical_trial_v2.py
-const TOOLS = [{
-  name: 'search_clinical_trials',
-  description:
-    'Search ClinicalTrials.gov for currently RECRUITING clinical trials that match ' +
-    'a medical condition and are within a given radius of a US ZIP code. Returns ' +
-    'trial name, facility, city/state, distance in miles, URL, brief summary, ' +
-    'phase, and eligibility details.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      condition: {
-        type: 'string',
-        description: "Medical condition to search (e.g. 'Type 2 Diabetes')",
-      },
-      zipcode: {
-        type: 'string',
-        description: 'US 5-digit ZIP code for the centre of the search',
-      },
-      radius_miles: {
-        type: 'integer',
-        description: 'Search radius in miles — 50, 100, 150, or 200',
-        enum: [50, 100, 150, 200],
-        default: 50,
-      },
-    },
-    required: ['condition', 'zipcode', 'radius_miles'],
-  },
-}];
-
-// Same system prompt as clinical_trial_v2.py
-const SYSTEM_PROMPT = `You are a clinical-trial research assistant.
-When you receive trial data from the search tool, present EACH trial in this
-exact format — no markdown headers, just clean numbered output:
-
-─────────────────────────────────────────────
-Trial #N
-─────────────────────────────────────────────
-Title       : <full title>
-Facility    : <facility name>, <city>, <state>
-Distance    : <X.X> miles from ZIP <zipcode>
-Link        : https://clinicaltrials.gov/study/<NCT_ID>
-
-Summary (5 lines):
-1. <What the study is investigating>
-2. <Who it is for (age, sex, condition)>
-3. <Key intervention or treatment being tested>
-4. <Phase and what that means for participants>
-5. <Why someone might consider enrolling>
-
-Write the 5-line summary in plain English — no jargon — so any patient can
-understand it. Base it on the brief_summary, conditions, phases, eligibility,
-and age/sex data returned by the tool.
-
-After listing all trials, add a short closing line with the total count.
-If no trials are found, say so clearly and suggest broadening the search radius.`;
-
-// ── Haversine distance (miles) ─────────────────────────────────────────────────
-function haversineMi(lat1, lon1, lat2, lon2) {
-  const R  = 3958.8;
-  const p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
-  const dp = (lat2 - lat1) * Math.PI / 180;
-  const dl = (lon2 - lon1) * Math.PI / 180;
-  const a  = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  return R * 2 * Math.asin(Math.sqrt(a));
-}
-
-// ── ZIP → lat/lon via zippopotam.us ───────────────────────────────────────────
-async function geocodeZip(zip) {
-  const r = await fetch(`https://api.zippopotam.us/us/${zip}`);
-  if (!r.ok) throw new Error(`Invalid ZIP code: ${zip}. Please enter a valid US ZIP code.`);
-  const d     = await r.json();
-  const place = d.places[0];
-  return [parseFloat(place.latitude), parseFloat(place.longitude)];
-}
-
-// ── ClinicalTrials.gov API v2 search ──────────────────────────────────────────
-async function searchTrials(condition, lat, lon, radiusMi) {
-  const params = new URLSearchParams({
-    'query.cond':          condition,
-    'filter.geo':          `distance(${lat},${lon},${radiusMi}mi)`,
-    'filter.overallStatus': 'RECRUITING',
-    pageSize:              '20',
-    format:                'json',
-  });
-  const r = await fetch(`${CT_BASE}/studies?${params}`);
-  if (!r.ok) throw new Error(`ClinicalTrials.gov API error: ${r.status}`);
-  const data = await r.json();
-
-  const rows = [];
-  const seen = new Set();
-
-  for (const study of data.studies || []) {
-    const proto     = study.protocolSection || {};
-    const idMod     = proto.identificationModule   || {};
-    const descMod   = proto.descriptionModule      || {};
-    const condMod   = proto.conditionsModule       || {};
-    const designMod = proto.designModule           || {};
-    const eligMod   = proto.eligibilityModule      || {};
-    const locMod    = proto.contactsLocationsModule || {};
-
-    const nctId = idMod.nctId       || '';
-    const title = idMod.briefTitle  || 'Untitled Study';
-
-    let briefSummary = (descMod.briefSummary || '').trim();
-    if (briefSummary.length > 800) briefSummary = briefSummary.slice(0, 797) + '...';
-
-    let eligCriteria = (eligMod.eligibilityCriteria || '').trim();
-    if (eligCriteria.length > 500) eligCriteria = eligCriteria.slice(0, 497) + '...';
-
-    for (const loc of locMod.locations || []) {
-      const geo  = loc.geoPoint || {};
-      const slat = geo.lat, slon = geo.lon;
-      if (slat == null || slon == null) continue;
-
-      const dist = haversineMi(lat, lon, parseFloat(slat), parseFloat(slon));
-      if (dist > radiusMi) continue;
-
-      const key = `${nctId}|${loc.facility || ''}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      rows.push({
-        nct_id:               nctId,
-        title,
-        facility:             loc.facility || '',
-        city:                 loc.city     || '',
-        state:                loc.state    || '',
-        zip:                  loc.zip      || '',
-        distance_miles:       Math.round(dist * 10) / 10,
-        url:                  `https://clinicaltrials.gov/study/${nctId}`,
-        brief_summary:        briefSummary,
-        conditions:           condMod.conditions || [],
-        phases:               designMod.phases   || [],
-        eligibility_criteria: eligCriteria,
-        min_age:              eligMod.minimumAge || '',
-        max_age:              eligMod.maximumAge || '',
-        sex:                  eligMod.sex        || '',
-      });
-    }
+// ── Load condition dropdown ────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  const sel = document.getElementById('condition');
+  try {
+    const r    = await fetch('/api/conditions');
+    const data = await r.json();
+    sel.innerHTML = data.conditions
+      .map(c => `<option value="${esc(c)}">${esc(c)}</option>`)
+      .join('');
+  } catch {
+    sel.innerHTML = '<option value="">Failed to load — is the server running?</option>';
   }
-
-  rows.sort((a, b) => a.distance_miles - b.distance_miles);
-  return rows;
-}
-
-// ── Anthropic Messages API (direct browser access) ────────────────────────────
-async function claudeCreate(apiKey, messages) {
-  const r = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type':   'application/json',
-      'x-api-key':      apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model:      'claude-opus-4-6',
-      max_tokens: 8192,
-      system:     SYSTEM_PROMPT,
-      tools:      TOOLS,
-      messages,
-    }),
-  });
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Anthropic API error ${r.status}`);
-  }
-  return r.json();
-}
+});
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
-function htmlEsc(s) {
+function esc(s) {
   return String(s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function makeCard(type, emoji, label, bodyContent) {
+function makeCard(type, emoji, label, text) {
   const log  = document.getElementById('agent-log');
   const wrap = document.createElement('div');
   wrap.className = `card card-${type}`;
@@ -463,12 +255,8 @@ function makeCard(type, emoji, label, bodyContent) {
   lbl.textContent = `${emoji}  ${label}`;
 
   const body = document.createElement('div');
-  body.className = 'card-body';
-  if (typeof bodyContent === 'string') {
-    body.textContent = bodyContent;
-  } else {
-    body.appendChild(bodyContent);
-  }
+  body.className   = 'card-body';
+  body.textContent = text;
 
   wrap.appendChild(lbl);
   wrap.appendChild(body);
@@ -477,16 +265,13 @@ function makeCard(type, emoji, label, bodyContent) {
   return wrap;
 }
 
-function addSpinner(msg = 'Claude is thinking…') {
+function addSpinner(msg) {
   removeSpinner();
   const log  = document.getElementById('agent-log');
   const wrap = document.createElement('div');
   wrap.className = 'card card-claude';
   wrap.id        = 'spinner-card';
-  const body = document.createElement('div');
-  body.className = 'card-body';
-  body.innerHTML = `<div class="thinking"><div class="spinner"></div> ${htmlEsc(msg)}</div>`;
-  wrap.appendChild(body);
+  wrap.innerHTML = `<div class="card-body"><div class="thinking"><div class="spinner"></div> ${esc(msg)}</div></div>`;
   log.appendChild(wrap);
   requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('visible')));
 }
@@ -502,38 +287,14 @@ function appendOutput(text) {
   out.scrollTop = out.scrollHeight;
 }
 
-// ── Load conditions on DOMContentLoaded ───────────────────────────────────────
-window.addEventListener('DOMContentLoaded', async () => {
-  // Restore saved API key for convenience
-  const saved = sessionStorage.getItem('ct_finder_api_key');
-  if (saved) document.getElementById('apikey').value = saved;
-
-  const sel = document.getElementById('condition');
-  try {
-    const params = new URLSearchParams({ pageSize: '1000' });
-    const r = await fetch(`${CT_BASE}/stats/fieldValues/ConditionSearch?${params}`);
-    if (!r.ok) throw new Error('unavailable');
-    const data = await r.json();
-    const vals = (data.fieldValues || []).map(v => v.value).filter(Boolean).sort();
-    if (!vals.length) throw new Error('empty');
-    sel.innerHTML = vals.map(c => `<option value="${htmlEsc(c)}">${htmlEsc(c)}</option>`).join('');
-  } catch {
-    sel.innerHTML = FALLBACK_CONDITIONS.map(c => `<option value="${htmlEsc(c)}">${htmlEsc(c)}</option>`).join('');
-  }
-});
-
-// ── Main agent function ────────────────────────────────────────────────────────
+// ── Main search — calls Flask backend via SSE ─────────────────────────────────
 async function findTrials() {
-  const apiKey    = document.getElementById('apikey').value.trim();
   const condition = document.getElementById('condition').value.trim();
   const zip       = document.getElementById('zip').value.trim();
-  const miles     = parseInt(document.getElementById('miles').value, 10);
+  const miles     = document.getElementById('miles').value;
 
-  if (!apiKey)               { alert('Please enter your Anthropic API key.');      return; }
-  if (!condition)            { alert('Please select a medical condition.');         return; }
-  if (!/^\d{5}$/.test(zip))  { alert('Please enter a valid 5-digit ZIP code.');    return; }
-
-  sessionStorage.setItem('ct_finder_api_key', apiKey);
+  if (!condition)             { alert('Please select a medical condition.'); return; }
+  if (!/^\d{5}$/.test(zip))  { alert('Please enter a valid 5-digit ZIP code.'); return; }
 
   const btn = document.getElementById('run-btn');
   btn.disabled    = true;
@@ -542,128 +303,69 @@ async function findTrials() {
   document.getElementById('agent-log').innerHTML = '';
   document.getElementById('output').textContent  = '';
 
-  try {
-    // ── Show user request card ────────────────────────────────────────────────
-    makeCard('user', '🧑', 'Search Request',
-      `Condition : ${condition}\nZIP code  : ${zip}\nRadius    : ${miles} miles`);
+  makeCard('user', '🧑', 'Search Request',
+    `Condition : ${condition}\nZIP code  : ${zip}\nRadius    : ${miles} miles`);
 
-    // ── Geocode ZIP ───────────────────────────────────────────────────────────
-    addSpinner('Geocoding ZIP code…');
-    const [lat, lon] = await geocodeZip(zip);
-    removeSpinner();
-    makeCard('data', '📍', 'ZIP Geocoded',
-      `ZIP ${zip} → ${lat.toFixed(4)}°N, ${lon.toFixed(4)}°W`);
+  addSpinner('Querying ClinicalTrials.gov…');
 
-    // ── Build prompt and run agentic loop ─────────────────────────────────────
-    const prompt =
-      `Please find recruiting clinical trials for **${condition}** within ${miles} miles ` +
-      `of ZIP code ${zip}. Use the search tool, then present every result using the exact ` +
-      `format described in your instructions, including the 5-line summary.`;
+  const url = `/api/search?condition=${encodeURIComponent(condition)}&zipcode=${encodeURIComponent(zip)}&miles=${miles}`;
+  const es  = new EventSource(url);
 
-    const messages = [{ role: 'user', content: prompt }];
+  es.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
 
-    addSpinner('Claude is thinking…');
-    let turn = 0;
-
-    while (true) {
-      turn++;
-      const response = await claudeCreate(apiKey, messages);
-
-      // ── end_turn: print final text and finish ─────────────────────────────
-      if (response.stop_reason === 'end_turn') {
+    if (msg.event === 'status') {
+      removeSpinner();
+      // Surface agent status messages as activity cards
+      const text = msg.text.trim();
+      if (text.startsWith('🤖')) {
+        makeCard('claude', '🤖', 'Agent Started', text.replace(/^🤖\s*/, ''));
+        addSpinner('Claude is thinking…');
+      } else if (text.startsWith('🛠')) {
         removeSpinner();
-        const text = (response.content.find(b => b.type === 'text') || {}).text || '';
-        appendOutput(text);
-        makeCard('done', '✅', `Agent Complete · end_turn (${turn} turn${turn > 1 ? 's' : ''})`,
-          `Agentic loop finished. Claude reached end_turn after ${turn} turn(s).`);
-        break;
-      }
-
-      // ── tool_use: execute each tool and loop ──────────────────────────────
-      if (response.stop_reason === 'tool_use') {
+        makeCard('tool', '🔧', 'Tool Called', text.replace(/^🛠\s*/, ''));
+        addSpinner('Querying ClinicalTrials.gov…');
+      } else if (text.startsWith('✅')) {
         removeSpinner();
-        messages.push({ role: 'assistant', content: response.content });
-
-        // Surface any partial text Claude emitted before the tool call
-        const partial = (response.content.find(b => b.type === 'text' && b.text) || {}).text;
-        if (partial) appendOutput(partial);
-
-        const toolResults = [];
-
-        for (const block of response.content) {
-          if (block.type !== 'tool_use') continue;
-
-          // Tool-call card
-          const bodyEl = document.createElement('div');
-          bodyEl.innerHTML = `<strong>${htmlEsc(block.name)}</strong>`;
-          const badge = document.createElement('div');
-          badge.className   = 'badge';
-          badge.textContent =
-            `condition="${block.input.condition || ''}" · ` +
-            `zip=${block.input.zipcode || ''} · ` +
-            `${block.input.radius_miles || miles} mi`;
-          bodyEl.appendChild(badge);
-          makeCard('tool', '🔧', 'Tool Called', bodyEl);
-
-          addSpinner('Querying ClinicalTrials.gov…');
-
-          let resultStr;
-          try {
-            const trials = await searchTrials(
-              block.input.condition,
-              lat, lon,
-              block.input.radius_miles || miles,
-            );
-            const payload = {
-              condition:     block.input.condition,
-              zipcode:       block.input.zipcode,
-              user_location: { lat: parseFloat(lat.toFixed(4)), lon: parseFloat(lon.toFixed(4)) },
-              radius_miles:  block.input.radius_miles || miles,
-              count:         trials.length,
-              trials,
-            };
-            if (!trials.length) {
-              payload.message =
-                `No currently recruiting trials found for '${block.input.condition}' ` +
-                `within ${block.input.radius_miles || miles} miles of ZIP ${block.input.zipcode}.`;
-            }
-            resultStr = JSON.stringify(payload);
-            removeSpinner();
-            makeCard('data', '📦',
-              `Data Returned · ${trials.length} location${trials.length !== 1 ? 's' : ''}`,
-              `Found ${trials.length} recruiting trial location${trials.length !== 1 ? 's' : ''} ` +
-              `within ${block.input.radius_miles || miles} miles.\nWriting AI summaries…`);
-          } catch (e) {
-            resultStr = JSON.stringify({ error: e.message });
-            removeSpinner();
-            makeCard('error', '❌', 'Tool Error', e.message);
-          }
-
-          toolResults.push({
-            type:        'tool_result',
-            tool_use_id: block.id,
-            content:     resultStr,
-          });
-        }
-
-        messages.push({ role: 'user', content: toolResults });
+        makeCard('data', '📦', 'Data Returned', text.replace(/^✅\s*/, ''));
         addSpinner('Claude is writing summaries…');
-
-      } else {
-        // Unexpected stop reason
-        removeSpinner();
-        makeCard('done', '⏹', 'Agent Stopped', `Stop reason: ${response.stop_reason}`);
-        break;
       }
+      return;
     }
 
-  } catch (err) {
+    if (msg.event === 'text') {
+      removeSpinner();
+      appendOutput(msg.text);
+      return;
+    }
+
+    if (msg.event === 'done') {
+      removeSpinner();
+      es.close();
+      makeCard('done', '✅', 'Agent Complete', 'Agentic loop finished — end_turn reached.');
+      btn.disabled    = false;
+      btn.textContent = '🔍\u00A0 Find Trials';
+      return;
+    }
+
+    if (msg.event === 'error') {
+      removeSpinner();
+      es.close();
+      makeCard('error', '❌', 'Error', msg.text);
+      appendOutput('\n❌ ' + msg.text + '\n');
+      btn.disabled    = false;
+      btn.textContent = '🔍\u00A0 Find Trials';
+    }
+  };
+
+  es.onerror = () => {
     removeSpinner();
-    makeCard('error', '❌', 'Error', err.message);
-  } finally {
+    es.close();
+    makeCard('error', '❌', 'Connection Error',
+      'Lost connection to server. Is clinical_trial_v2.py running?');
     btn.disabled    = false;
     btn.textContent = '🔍\u00A0 Find Trials';
-  }
+  };
 }
 </script>
 </body>
