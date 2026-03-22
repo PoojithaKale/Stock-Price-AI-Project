@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock AI Agent Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+    header p  { color: #8b949e; margin-top: .4rem; font-size: .95rem; }
+
+    #container {
+      width: 100%;
+      max-width: 760px;
+      display: flex;
+      flex-direction: column;
+      gap: .75rem;
+    }
+
+    /* ── cards ── */
+    .card {
+      border-radius: 12px;
+      padding: 1rem 1.2rem;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity .4s ease, transform .4s ease;
+      border: 1px solid transparent;
+    }
+    .card.visible { opacity: 1; transform: translateY(0); }
+
+    .card-user    { background: #161b22; border-color: #30363d; }
+    .card-claude  { background: #0e1f38; border-color: #1d4b8a; }
+    .card-tool    { background: #141c14; border-color: #2a4a2a; }
+    .card-data    { background: #1c1410; border-color: #5a3a10; }
+    .card-done    { background: #0f1f14; border-color: #1a6b30; }
+
+    .card-label {
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: .45rem;
+      opacity: .7;
+    }
+    .card-user   .card-label { color: #58a6ff; }
+    .card-claude .card-label { color: #79c0ff; }
+    .card-tool   .card-label { color: #56d364; }
+    .card-data   .card-label { color: #e3b341; }
+    .card-done   .card-label { color: #3fb950; }
+
+    .card-body { font-size: .95rem; line-height: 1.6; white-space: pre-wrap; }
+
+    .badge {
+      display: inline-block;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: .15rem .55rem;
+      font-size: .8rem;
+      font-family: monospace;
+      color: #d2a679;
+      margin-top: .4rem;
+    }
+
+    /* data snippets */
+    .data-item {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: .6rem .9rem;
+      margin-top: .5rem;
+      font-size: .85rem;
+    }
+    .data-item strong { color: #58a6ff; display: block; margin-bottom: .2rem; }
+    .data-item span   { color: #8b949e; }
+    .data-url { font-size: .75rem; color: #484f58; margin-top: .2rem; }
+
+    /* final analysis */
+    .analysis-section { margin-top: .5rem; }
+    .analysis-section h3 { font-size: .9rem; color: #e6edf3; margin-bottom: .3rem; }
+    .metric-row {
+      display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .5rem;
+    }
+    .metric {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: .4rem .8rem;
+      font-size: .85rem;
+    }
+    .metric .m-label { color: #8b949e; font-size: .72rem; }
+    .metric .m-value { color: #e6edf3; font-weight: 600; }
+    .bullish { border-left: 3px solid #56d364; }
+    .bearish  { border-left: 3px solid #f85149; }
+    .verdict-box {
+      background: #0e3624;
+      border: 1px solid #238636;
+      border-radius: 8px;
+      padding: .7rem 1rem;
+      margin-top: .5rem;
+      font-size: .9rem;
+      line-height: 1.55;
+    }
+
+    /* step counter */
+    .step-indicator {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      font-size: .8rem;
+      color: #484f58;
+      margin-bottom: .3rem;
+    }
+    .step-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #30363d;
+    }
+    .step-dot.active { background: #58a6ff; box-shadow: 0 0 6px #58a6ff; }
+
+    /* run button */
+    #run-btn {
+      margin-top: 1.5rem;
+      padding: .65rem 2rem;
+      border-radius: 8px;
+      border: none;
+      background: #238636;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s, transform .1s;
+    }
+    #run-btn:hover  { background: #2ea043; }
+    #run-btn:active { transform: scale(.97); }
+    #run-btn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+
+    /* thinking spinner */
+    .thinking {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      color: #8b949e;
+      font-size: .9rem;
+    }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid #30363d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* loop badge */
+    .loop-badge {
+      text-align: center;
+      font-size: .75rem;
+      color: #484f58;
+      margin: .25rem 0;
+    }
+
+    footer { margin-top: 2.5rem; color: #484f58; font-size: .8rem; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🤖 Stock AI Agent</h1>
+  <p>Agentic loop demo · Anthropic SDK + Tavily web search</p>
+</header>
+
+<div id="container"></div>
+<button id="run-btn" onclick="runAgent()">▶ Run Agent</button>
+
+<footer>
+  Built with <code>anthropic</code> SDK · <code>claude-opus-4-6</code> · Tavily search
+</footer>
+
+<script>
+const STEPS = [
+  // Step 0 — user question
+  { type: "user", delay: 0 },
+
+  // Step 1 — Claude thinking + first tool call
+  { type: "thinking", delay: 700 },
+  { type: "claude-text", delay: 1400,
+    text: "Let me search for the latest Apple stock data and news." },
+  { type: "tool-call", delay: 2000,
+    tool: "web_search", query: "Apple AAPL stock price today analyst rating 2025" },
+  { type: "data-result", delay: 2800, results: [
+    { title: "Apple (AAPL) Stock — $189.42 today",   url: "finance.yahoo.com",
+      content: "AAPL trading at $189.42, up 1.2%. 52-wk range $164–$199. P/E 29.4. Analyst avg target $210. Consensus: BUY." },
+    { title: "Apple Q1 2025 Earnings Beat",          url: "reuters.com",
+      content: "Revenue $124.3B vs $121.8B estimate. iPhone +4.7% YoY. Services record $26.3B. EPS $2.40 vs $2.35 expected." },
+    { title: "Apple AI Driving iPhone Super-Cycle",  url: "techcrunch.com",
+      content: "Apple Intelligence features spurring strongest iPhone upgrade cycle in 3 years. Analysts project 15% unit growth FY2025." },
+  ]},
+
+  // Step 2 — loop turn 2
+  { type: "loop-divider", delay: 3400, turn: 2 },
+  { type: "thinking", delay: 3600 },
+  { type: "tool-call", delay: 4300,
+    tool: "web_search", query: "Apple earnings Q1 2025 revenue iPhone AI growth outlook" },
+  { type: "data-result", delay: 5100, results: [
+    { title: "Fed Holds Rates — Bullish for Tech",  url: "bloomberg.com",
+      content: "Federal Reserve held rates steady. Lower-rate environment historically bullish for tech stocks; reduces discount on future earnings." },
+    { title: "AAPL Technical Analysis: Bullish",    url: "seekingalpha.com",
+      content: "Apple above 50-day & 200-day MAs. RSI at 58 — room to run. Key resistance $195, support $183. Trend: bullish." },
+  ]},
+
+  // Step 3 — final answer
+  { type: "loop-divider", delay: 5700, turn: 3 },
+  { type: "thinking", delay: 5900 },
+  { type: "final-answer", delay: 7200 },
+  { type: "done", delay: 8000 },
+];
+
+const QUESTION = "Should I buy Apple stock today?";
+
+function el(tag, cls, html) {
+  const d = document.createElement(tag);
+  if (cls) d.className = cls;
+  if (html) d.innerHTML = html;
+  return d;
+}
+
+function card(type, inner) {
+  const wrap = el('div', `card card-${type}`);
+  wrap.appendChild(inner);
+  return wrap;
+}
+
+function labelEl(emoji, text, cardType) {
+  const d = el('div', 'card-label');
+  d.textContent = `${emoji}  ${text}`;
+  return d;
+}
+
+function show(elem) {
+  document.getElementById('container').appendChild(elem);
+  requestAnimationFrame(() => requestAnimationFrame(() => elem.classList.add('visible')));
+}
+
+function removeSpinner() {
+  const s = document.getElementById('spinner-card');
+  if (s) s.remove();
+}
+
+function addSpinner() {
+  removeSpinner();
+  const inner = el('div');
+  inner.innerHTML = `<div class="thinking"><div class="spinner"></div> Claude is thinking…</div>`;
+  const c = card('claude', inner);
+  c.id = 'spinner-card';
+  show(c);
+}
+
+function runAgent() {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  document.getElementById('container').innerHTML = '';
+
+  let stepIndex = 0;
+
+  function next() {
+    if (stepIndex >= STEPS.length) return;
+    const s = STEPS[stepIndex++];
+
+    setTimeout(() => {
+      processStep(s);
+      next();
+    }, stepIndex === 1 ? s.delay : s.delay - STEPS[stepIndex - 2].delay);
+  }
+  next();
+}
+
+function processStep(s) {
+  switch (s.type) {
+
+    case 'user': {
+      const inner = el('div');
+      inner.appendChild(labelEl('🧑', 'User Question', 'user'));
+      const b = el('div', 'card-body');
+      b.textContent = QUESTION;
+      inner.appendChild(b);
+      show(card('user', inner));
+      break;
+    }
+
+    case 'thinking':
+      addSpinner();
+      break;
+
+    case 'claude-text': {
+      removeSpinner();
+      const inner = el('div');
+      inner.appendChild(labelEl('🤖', 'Claude', 'claude'));
+      const b = el('div', 'card-body');
+      b.textContent = s.text;
+      inner.appendChild(b);
+      show(card('claude', inner));
+      break;
+    }
+
+    case 'tool-call': {
+      removeSpinner();
+      const inner = el('div');
+      inner.appendChild(labelEl('🔧', 'Tool Called', 'tool'));
+      const b = el('div', 'card-body');
+      b.innerHTML = `<strong>web_search</strong>`;
+      const badge = el('div', 'badge');
+      badge.textContent = `🔍 ${s.query}`;
+      b.appendChild(badge);
+      inner.appendChild(b);
+      show(card('tool', inner));
+      break;
+    }
+
+    case 'data-result': {
+      const inner = el('div');
+      inner.appendChild(labelEl('📦', `Data Returned · ${s.results.length} results`, 'data'));
+      s.results.forEach(r => {
+        const item = el('div', 'data-item');
+        item.innerHTML = `<strong>${r.title}</strong><span>${r.content}</span><div class="data-url">🔗 ${r.url}</div>`;
+        inner.appendChild(item);
+      });
+      show(card('data', inner));
+      break;
+    }
+
+    case 'loop-divider': {
+      const d = el('div', 'loop-badge');
+      d.textContent = `── agentic loop · turn ${s.turn} ──`;
+      document.getElementById('container').appendChild(d);
+      break;
+    }
+
+    case 'final-answer': {
+      removeSpinner();
+      const inner = el('div');
+      inner.appendChild(labelEl('🤖', 'Claude · Final Answer', 'claude'));
+
+      // metrics row
+      const metrics = el('div', 'metric-row');
+      [
+        { label: 'Price', value: '$189.42 ▲1.2%' },
+        { label: 'P/E',   value: '29.4' },
+        { label: 'Target', value: '$210 (+11%)' },
+        { label: 'Rating', value: '⭐ BUY' },
+      ].forEach(m => {
+        const mc = el('div', 'metric');
+        mc.innerHTML = `<div class="m-label">${m.label}</div><div class="m-value">${m.value}</div>`;
+        metrics.appendChild(mc);
+      });
+      inner.appendChild(metrics);
+
+      // bullish factors
+      const bull = el('div', 'analysis-section');
+      bull.innerHTML = `<h3>✅ Bullish Factors</h3>`;
+      [
+        'Record Q1 2025 revenue $124.3B — beat estimates',
+        'Services revenue all-time high: $26.3B',
+        'Apple Intelligence driving 3-year peak upgrade cycle',
+        'Trading above 50-day & 200-day moving averages',
+        'Fed holding rates steady — historically bullish for tech',
+      ].forEach(f => {
+        const row = el('div', 'data-item bullish');
+        row.textContent = f;
+        bull.appendChild(row);
+      });
+      inner.appendChild(bull);
+
+      // risks
+      const risks = el('div', 'analysis-section');
+      risks.style.marginTop = '.5rem';
+      risks.innerHTML = `<h3>⚠️ Risks</h3>`;
+      [
+        'P/E of 29.4 elevated vs. historical average',
+        'Key resistance level at $195',
+      ].forEach(r => {
+        const row = el('div', 'data-item bearish');
+        row.textContent = r;
+        risks.appendChild(row);
+      });
+      inner.appendChild(risks);
+
+      // verdict
+      const verdict = el('div', 'verdict-box');
+      verdict.innerHTML = `<strong>Verdict:</strong> Fundamentals and technicals both look favorable. For a long-term horizon (1+ years), AAPL appears to be a reasonable buy at current levels. Consider <em>dollar-cost averaging</em> rather than a lump-sum purchase given the elevated valuation.`;
+      inner.appendChild(verdict);
+
+      show(card('claude', inner));
+      break;
+    }
+
+    case 'done': {
+      removeSpinner();
+      const inner = el('div');
+      inner.appendChild(labelEl('✅', 'Agent Complete · stop_reason = end_turn', 'done'));
+      const b = el('div', 'card-body');
+      b.style.color = '#3fb950';
+      b.textContent = 'Agentic loop finished. Claude reached end_turn after 3 turns and 2 tool calls.';
+      inner.appendChild(b);
+      const c = card('done', inner);
+      show(c);
+
+      const btn = document.getElementById('run-btn');
+      btn.disabled = false;
+      btn.textContent = '🔄 Run Again';
+      break;
+    }
+  }
+}
+</script>
+</body>
+</html>
