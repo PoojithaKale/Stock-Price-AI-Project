@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tesla Stock AI Agent Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    header { text-align: center; margin-bottom: 2rem; }
+    header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+    header p  { color: #8b949e; margin-top: .4rem; font-size: .95rem; }
+
+    #container {
+      width: 100%;
+      max-width: 760px;
+      display: flex;
+      flex-direction: column;
+      gap: .75rem;
+    }
+
+    .card {
+      border-radius: 12px;
+      padding: 1rem 1.2rem;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity .4s ease, transform .4s ease;
+      border: 1px solid transparent;
+    }
+    .card.visible { opacity: 1; transform: translateY(0); }
+
+    .card-user   { background: #161b22; border-color: #30363d; }
+    .card-claude { background: #0e1f38; border-color: #1d4b8a; }
+    .card-tool   { background: #141c14; border-color: #2a4a2a; }
+    .card-data   { background: #1c1410; border-color: #5a3a10; }
+    .card-done   { background: #0f1f14; border-color: #1a6b30; }
+
+    .card-label {
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: .45rem;
+      opacity: .7;
+    }
+    .card-user   .card-label { color: #58a6ff; }
+    .card-claude .card-label { color: #79c0ff; }
+    .card-tool   .card-label { color: #56d364; }
+    .card-data   .card-label { color: #e3b341; }
+    .card-done   .card-label { color: #3fb950; }
+
+    .card-body { font-size: .95rem; line-height: 1.6; white-space: pre-wrap; }
+
+    .badge {
+      display: inline-block;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: .15rem .55rem;
+      font-size: .8rem;
+      font-family: monospace;
+      color: #d2a679;
+      margin-top: .4rem;
+    }
+
+    .data-item {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: .6rem .9rem;
+      margin-top: .5rem;
+      font-size: .85rem;
+    }
+    .data-item strong { color: #58a6ff; display: block; margin-bottom: .2rem; }
+    .data-item span   { color: #8b949e; }
+    .data-url { font-size: .75rem; color: #484f58; margin-top: .2rem; }
+
+    .analysis-section { margin-top: .5rem; }
+    .analysis-section h3 { font-size: .9rem; color: #e6edf3; margin-bottom: .3rem; }
+    .metric-row { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .5rem; }
+    .metric {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: .4rem .8rem;
+      font-size: .85rem;
+    }
+    .metric .m-label { color: #8b949e; font-size: .72rem; }
+    .metric .m-value { color: #e6edf3; font-weight: 600; }
+    .bullish { border-left: 3px solid #56d364; }
+    .bearish  { border-left: 3px solid #f85149; }
+    .verdict-box {
+      background: #0e3624;
+      border: 1px solid #238636;
+      border-radius: 8px;
+      padding: .7rem 1rem;
+      margin-top: .5rem;
+      font-size: .9rem;
+      line-height: 1.55;
+    }
+
+    .loop-badge {
+      text-align: center;
+      font-size: .75rem;
+      color: #484f58;
+      margin: .25rem 0;
+    }
+
+    .thinking {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      color: #8b949e;
+      font-size: .9rem;
+    }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid #30363d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #run-btn {
+      margin-top: 1.5rem;
+      padding: .65rem 2rem;
+      border-radius: 8px;
+      border: none;
+      background: #cc0000;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s, transform .1s;
+    }
+    #run-btn:hover  { background: #e60000; }
+    #run-btn:active { transform: scale(.97); }
+    #run-btn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+
+    footer { margin-top: 2.5rem; color: #484f58; font-size: .8rem; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ Tesla Stock AI Agent</h1>
+  <p>Agentic loop demo · Anthropic SDK + Tavily web search</p>
+</header>
+
+<div id="container"></div>
+<button id="run-btn" onclick="runAgent()">▶ Run Agent</button>
+
+<footer>
+  Built with <code>anthropic</code> SDK · <code>claude-opus-4-6</code> · Tavily search
+</footer>
+
+<script>
+const STEPS = [
+  { type: "user", delay: 0 },
+
+  { type: "thinking", delay: 700 },
+  { type: "claude-text", delay: 1400,
+    text: "Let me search for the latest Tesla stock data, analyst ratings, and recent news." },
+  { type: "tool-call", delay: 2000,
+    query: "Tesla TSLA stock price today analyst rating 2025" },
+  { type: "data-result", delay: 2800, results: [
+    { title: "Tesla (TSLA) — $248.71 +2.3% today",
+      url: "finance.yahoo.com",
+      content: "TSLA at $248.71. P/E 72. 52-wk range $138–$300. Avg analyst target $275. Consensus: BUY (18 buy, 9 hold, 6 sell)." },
+    { title: "Tesla Q4 2024 Earnings Beat Estimates",
+      url: "reuters.com",
+      content: "Revenue $25.7B vs $25.1B est. Deliveries 495,570 +2% YoY. Energy division record $3.0B. EPS $0.73 vs $0.71 expected." },
+    { title: "Morgan Stanley Raises TSLA Target to $310",
+      url: "marketwatch.com",
+      content: "Analyst upgrades TSLA citing Robotaxi optionality and Optimus robot ramp. Maintains Overweight rating." },
+  ]},
+
+  { type: "loop-divider", delay: 3400, turn: 2 },
+  { type: "thinking", delay: 3600 },
+  { type: "tool-call", delay: 4300,
+    query: "Tesla FSD Robotaxi Optimus 2025 outlook" },
+  { type: "data-result", delay: 5100, results: [
+    { title: "Tesla FSD v13 Achieves Major Milestone",
+      url: "techcrunch.com",
+      content: "FSD v13 now handles 99.7% of trips intervention-free in test cities. Robotaxi commercial launch targeted Austin, TX — June 2025." },
+    { title: "Optimus Robot Production at 1,000/Week",
+      url: "bloomberg.com",
+      content: "Tesla's Optimus humanoid robot ramping production. Elon Musk projects 100,000 units in 2025. TAM estimated at $10T+ long-term." },
+  ]},
+
+  { type: "loop-divider", delay: 5700, turn: 3 },
+  { type: "thinking", delay: 5900 },
+  { type: "final-answer", delay: 7200 },
+  { type: "done", delay: 8000 },
+];
+
+const QUESTION = "Should I buy Tesla stock today?";
+
+function el(tag, cls, html) {
+  const d = document.createElement(tag);
+  if (cls) d.className = cls;
+  if (html) d.innerHTML = html;
+  return d;
+}
+
+function card(type, inner) {
+  const wrap = el('div', `card card-${type}`);
+  wrap.appendChild(inner);
+  return wrap;
+}
+
+function show(elem) {
+  document.getElementById('container').appendChild(elem);
+  requestAnimationFrame(() => requestAnimationFrame(() => elem.classList.add('visible')));
+}
+
+function removeSpinner() {
+  const s = document.getElementById('spinner-card');
+  if (s) s.remove();
+}
+
+function addSpinner() {
+  removeSpinner();
+  const inner = el('div');
+  inner.innerHTML = `<div class="thinking"><div class="spinner"></div> Claude is thinking…</div>`;
+  const c = card('claude', inner);
+  c.id = 'spinner-card';
+  show(c);
+}
+
+function runAgent() {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running…';
+  document.getElementById('container').innerHTML = '';
+
+  let stepIndex = 0;
+  function next() {
+    if (stepIndex >= STEPS.length) return;
+    const s = STEPS[stepIndex++];
+    setTimeout(() => { processStep(s); next(); },
+      stepIndex === 1 ? s.delay : s.delay - STEPS[stepIndex - 2].delay);
+  }
+  next();
+}
+
+function processStep(s) {
+  switch (s.type) {
+
+    case 'user': {
+      const inner = el('div');
+      const lbl = el('div', 'card-label'); lbl.textContent = '🧑  User Question';
+      inner.appendChild(lbl);
+      const b = el('div', 'card-body'); b.textContent = QUESTION;
+      inner.appendChild(b);
+      show(card('user', inner));
+      break;
+    }
+
+    case 'thinking':
+      addSpinner();
+      break;
+
+    case 'claude-text': {
+      removeSpinner();
+      const inner = el('div');
+      const lbl = el('div', 'card-label'); lbl.textContent = '🤖  Claude';
+      inner.appendChild(lbl);
+      const b = el('div', 'card-body'); b.textContent = s.text;
+      inner.appendChild(b);
+      show(card('claude', inner));
+      break;
+    }
+
+    case 'tool-call': {
+      removeSpinner();
+      const inner = el('div');
+      const lbl = el('div', 'card-label'); lbl.textContent = '🔧  Tool Called';
+      inner.appendChild(lbl);
+      const b = el('div', 'card-body');
+      b.innerHTML = `<strong>web_search</strong>`;
+      const badge = el('div', 'badge'); badge.textContent = `🔍 ${s.query}`;
+      b.appendChild(badge);
+      inner.appendChild(b);
+      show(card('tool', inner));
+      break;
+    }
+
+    case 'data-result': {
+      const inner = el('div');
+      const lbl = el('div', 'card-label');
+      lbl.textContent = `📦  Data Returned · ${s.results.length} results`;
+      inner.appendChild(lbl);
+      s.results.forEach(r => {
+        const item = el('div', 'data-item');
+        item.innerHTML = `<strong>${r.title}</strong><span>${r.content}</span><div class="data-url">🔗 ${r.url}</div>`;
+        inner.appendChild(item);
+      });
+      show(card('data', inner));
+      break;
+    }
+
+    case 'loop-divider': {
+      const d = el('div', 'loop-badge');
+      d.textContent = `── agentic loop · turn ${s.turn} ──`;
+      document.getElementById('container').appendChild(d);
+      break;
+    }
+
+    case 'final-answer': {
+      removeSpinner();
+      const inner = el('div');
+      const lbl = el('div', 'card-label'); lbl.textContent = '🤖  Claude · Final Answer';
+      inner.appendChild(lbl);
+
+      const metrics = el('div', 'metric-row');
+      [
+        { label: 'Price',  value: '$248.71 ▲2.3%' },
+        { label: 'P/E',    value: '72' },
+        { label: 'Target', value: '$275 (+11%)' },
+        { label: 'Rating', value: '⭐ BUY' },
+      ].forEach(m => {
+        const mc = el('div', 'metric');
+        mc.innerHTML = `<div class="m-label">${m.label}</div><div class="m-value">${m.value}</div>`;
+        metrics.appendChild(mc);
+      });
+      inner.appendChild(metrics);
+
+      const bull = el('div', 'analysis-section');
+      bull.innerHTML = `<h3>✅ Bullish Factors</h3>`;
+      [
+        'Q4 earnings beat — revenue $25.7B, EPS $0.73 vs $0.71 expected',
+        'Energy division record $3.0B — fastest growing segment',
+        'FSD v13 near intervention-free; Robotaxi launch Austin June 2025',
+        'Optimus robot at 1,000/week — $10T+ long-term TAM',
+        'Analyst consensus BUY with 18 buy ratings; avg target $275',
+      ].forEach(f => {
+        const row = el('div', 'data-item bullish'); row.textContent = f;
+        bull.appendChild(row);
+      });
+      inner.appendChild(bull);
+
+      const risks = el('div', 'analysis-section');
+      risks.style.marginTop = '.5rem';
+      risks.innerHTML = `<h3>⚠️ Risks</h3>`;
+      [
+        'P/E of 72 is expensive — priced for perfection',
+        'Delivery growth only +2% YoY — auto business maturing',
+        'Robotaxi, FSD & Optimus timelines could slip',
+        '6 analysts rate TSLA a Sell — meaningful minority',
+      ].forEach(r => {
+        const row = el('div', 'data-item bearish'); row.textContent = r;
+        risks.appendChild(row);
+      });
+      inner.appendChild(risks);
+
+      const verdict = el('div', 'verdict-box');
+      verdict.innerHTML = `<strong>Verdict:</strong> TSLA is a <em>high-risk, high-reward</em> bet on autonomy and robotics. The analyst consensus leans Buy with ~11% upside to target, but the P/E of 72 leaves little room for error. Best suited for investors with a long time horizon and high risk tolerance. Consider <em>dollar-cost averaging</em> rather than a lump-sum entry.`;
+      inner.appendChild(verdict);
+
+      show(card('claude', inner));
+      break;
+    }
+
+    case 'done': {
+      removeSpinner();
+      const inner = el('div');
+      const lbl = el('div', 'card-label');
+      lbl.textContent = '✅  Agent Complete · stop_reason = end_turn';
+      inner.appendChild(lbl);
+      const b = el('div', 'card-body');
+      b.style.color = '#3fb950';
+      b.textContent = 'Agentic loop finished. Claude reached end_turn after 3 turns and 2 tool calls.';
+      inner.appendChild(b);
+      show(card('done', inner));
+
+      const btn = document.getElementById('run-btn');
+      btn.disabled = false;
+      btn.textContent = '🔄 Run Again';
+      break;
+    }
+  }
+}
+</script>
+</body>
+</html>
