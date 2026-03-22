@@ -11,9 +11,9 @@ tools = [{"name": "web_search", "description": "Search web for stock prices, new
           "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}]
 
 MOCK = json.dumps([
-    {"title": "Apple AAPL $213.49 +0.8%", "content": "AAPL at $213.49. P/E 33.1. Analyst avg target $237. Consensus: BUY (28 buy, 10 hold, 4 sell). 52-wk range $164–$260.", "url": "https://finance.yahoo.com/quote/AAPL"},
-    {"title": "Apple Q1 FY2025 Earnings Beat", "content": "Revenue $124.3B vs $121.8B est. iPhone +1.5% YoY. Services record $26.3B. EPS $2.40 vs $2.35 expected.", "url": "https://reuters.com"},
-    {"title": "Apple Intelligence Driving Upgrade Cycle", "content": "Apple AI features spurring strongest iPhone upgrade cycle in 3 years. Analysts project 8% unit growth FY2025.", "url": "https://techcrunch.com"},
+    {"title": "Tesla TSLA $248.71 +2.3%", "content": "TSLA at $248.71. P/E 72. Analyst avg target $275. Consensus: BUY (18 buy, 9 hold, 6 sell). 52-wk range $138–$300.", "url": "https://finance.yahoo.com/quote/TSLA"},
+    {"title": "Tesla Q4 2024 Beat Estimates", "content": "Revenue $25.7B vs $25.1B est. Deliveries 495,570 +2% YoY. Energy division record $3.0B. EPS $0.73 vs $0.71 expected.", "url": "https://reuters.com"},
+    {"title": "Tesla FSD & Robotaxi 2025", "content": "FSD v13 strong results. Robotaxi launch Austin June 2025. Optimus robot at 1,000/week production. $TSLA bullish catalysts.", "url": "https://techcrunch.com"},
 ])
 
 def web_search(query):
@@ -25,7 +25,7 @@ def web_search(query):
             print(f"   ⚠️  Tavily error ({e.__class__.__name__}) — using mock data")
     return MOCK
 
-question = "Should I buy Apple stock today?"
+question = "Should I buy Tesla stock today?"
 print(f"\n🧑  User: {question}\n")
 messages = [{"role": "user", "content": question}]
 
